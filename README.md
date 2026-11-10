@@ -1,4 +1,4 @@
-# 🏥 Sistem Inventory Alat Medis & Tugas CRUD SIMRS
+# Sistem Inventory Alat Medis & Tugas CRUD SIMRS
 
 Proyek Tugas Praktikum Pemrograman Web dan Sistem Informasi Manajemen Rumah Sakit (SIMRS) berbasis PHP dan database MySQL / MariaDB.
 
