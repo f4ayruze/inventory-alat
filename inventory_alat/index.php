@@ -29,11 +29,24 @@ if (count($whereClauses) > 0) {
     $whereSql = "WHERE " . implode(" AND ", $whereClauses);
 }
 
-$query = "SELECT * FROM alat $whereSql ORDER BY id DESC";
+// Pagination logic (Finding #12)
+$perPage = 10;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$totalFilteredRes = mysqli_query($mysqli, "SELECT COUNT(*) AS cnt FROM alat $whereSql");
+$totalFiltered = mysqli_fetch_assoc($totalFilteredRes)['cnt'];
+$totalPages = max(1, (int)ceil($totalFiltered / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+
+$query = "SELECT * FROM alat $whereSql ORDER BY id DESC LIMIT $perPage OFFSET $offset";
 $result = mysqli_query($mysqli, $query);
 
 // Ambil daftar lokasi unik untuk filter pills
 $lokasiQuery = mysqli_query($mysqli, "SELECT DISTINCT lokasi FROM alat WHERE lokasi != '' ORDER BY lokasi ASC");
+
+$is_super_admin = ($_SESSION['role'] ?? '') === 'Super Admin';
 
 include("header.php");
 ?>
@@ -62,13 +75,15 @@ include("header.php");
   <div class="d-flex flex-wrap justify-content-between align-items-center position-relative z-index-2">
     <div>
       <span class="alert-green-badge"><i class="bi bi-check-circle-fill me-1"></i> SIMRS Online</span>
-      <span class="ms-2 fw-bold text-white">Database: `simrs` &bull; Login sebagai: <?= htmlspecialchars($_SESSION['nama_lengkap']) ?> (<?= htmlspecialchars($_SESSION['role']) ?>)</span>
+      <span class="ms-2 fw-bold text-white">Database: `simrs` &bull; Login sebagai: <?= htmlspecialchars($_SESSION['nama_lengkap'] ?? '', ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($_SESSION['role'] ?? '', ENT_QUOTES, 'UTF-8') ?>)</span>
       <div class="text-white-50 small mt-1">Sistem inventaris alat medis aktif. Seluruh riwayat akses dicatat untuk keamanan data aset rumah sakit.</div>
     </div>
     <div class="mt-2 mt-sm-0 d-flex gap-2">
+      <?php if ($is_super_admin): ?>
       <a href="log_akses.php" class="btn btn-sm btn-light text-primary fw-semibold px-3 py-1 rounded-pill">
-        <i class="bi bi-shield-check me-1"></i> Cek Siapa Saja yang Akses
+        <i class="bi bi-shield-check me-1"></i> Cek Log Akses Sistem
       </a>
+      <?php endif; ?>
       <a href="add.php" class="alert-green-link text-decoration-none d-flex align-items-center">
         <span>+ Entri Alat Baru</span>
         <i class="bi bi-arrow-right ms-1"></i>
@@ -135,7 +150,7 @@ include("header.php");
       <a href="index.php?lokasi=<?= urlencode($loc['lokasi']) ?>" 
          class="btn btn-sm <?= ($lokasiFilter === $loc['lokasi']) ? 'btn-primary' : 'btn-outline-secondary' ?> rounded-pill px-3" 
          style="font-size: 0.78rem;">
-        <?= htmlspecialchars($loc['lokasi']) ?>
+        <?= htmlspecialchars($loc['lokasi'], ENT_QUOTES, 'UTF-8') ?>
       </a>
     <?php endwhile; ?>
   </div>
@@ -149,10 +164,10 @@ include("header.php");
     <!-- Search bar -->
     <form action="index.php" method="get" class="table-search-box" style="min-width: 300px;">
       <?php if (!empty($lokasiFilter)): ?>
-        <input type="hidden" name="lokasi" value="<?= htmlspecialchars($lokasiFilter) ?>">
+        <input type="hidden" name="lokasi" value="<?= htmlspecialchars($lokasiFilter, ENT_QUOTES, 'UTF-8') ?>">
       <?php endif; ?>
       <i class="bi bi-search table-search-icon"></i>
-      <input type="text" name="search" class="table-search-input" placeholder="Cari nama alat, merek, atau lokasi..." value="<?= htmlspecialchars($search) ?>">
+      <input type="text" name="search" class="table-search-input" placeholder="Cari nama alat, merek, atau lokasi..." value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>">
     </form>
 
     <div class="d-flex align-items-center gap-2">
@@ -188,7 +203,7 @@ include("header.php");
       <tbody>
         <?php if ($result && mysqli_num_rows($result) > 0): ?>
           <?php 
-          $no = 1;
+          $no = $offset + 1;
           while ($row = mysqli_fetch_assoc($result)): 
           ?>
             <tr>
@@ -200,16 +215,16 @@ include("header.php");
                     <i class="bi bi-tools"></i>
                   </div>
                   <div>
-                    <div class="fw-bold text-dark"><?= htmlspecialchars($row['nama_alat']) ?></div>
-                    <small class="text-muted">ID: <?= $row['id'] ?></small>
+                    <div class="fw-bold text-dark"><?= htmlspecialchars($row['nama_alat'], ENT_QUOTES, 'UTF-8') ?></div>
+                    <small class="text-muted">ID: <?= intval($row['id']) ?></small>
                   </div>
                 </div>
               </td>
-              <td><span class="badge-tahun"><?= htmlspecialchars($row['tahun']) ?></span></td>
-              <td><span class="fw-medium text-dark"><?= htmlspecialchars($row['merek']) ?></span></td>
+              <td><span class="badge-tahun"><?= htmlspecialchars($row['tahun'], ENT_QUOTES, 'UTF-8') ?></span></td>
+              <td><span class="fw-medium text-dark"><?= htmlspecialchars($row['merek'], ENT_QUOTES, 'UTF-8') ?></span></td>
               <td>
                 <span class="badge-lokasi">
-                  <i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($row['lokasi']) ?>
+                  <i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($row['lokasi'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
               </td>
               <td>
@@ -218,14 +233,25 @@ include("header.php");
                 </span>
               </td>
               <td>
-                <div class="d-flex justify-content-center gap-1">
-                  <a href="edit.php?id=<?= $row['id'] ?>" class="table-btn-action" title="Edit Data Alat">
+                <div class="d-flex justify-content-center gap-1 align-items-center">
+                  <a href="edit.php?id=<?= intval($row['id']) ?>" class="table-btn-action" title="Edit Data Alat">
                     <i class="bi bi-pencil"></i>
                   </a>
-                  <a href="delete.php?id=<?= $row['id'] ?>" class="table-btn-action delete" title="Hapus Data Alat" 
-                     onclick="return confirm('Apakah Anda yakin ingin menghapus data alat: <?= addslashes($row['nama_alat']) ?> (ID: <?= $row['id'] ?>)?');">
+                  <?php if ($is_super_admin): ?>
+                  <!-- Form Hapus Aman: Method POST + CSRF Token + Anti Stored-XSS (Finding #3 & #5) -->
+                  <form action="delete.php" method="POST" class="d-inline m-0 p-0" onsubmit="return confirmDelete(this);">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="id" value="<?= intval($row['id']) ?>">
+                    <input type="hidden" name="item_name" value="<?= htmlspecialchars($row['nama_alat'], ENT_QUOTES, 'UTF-8') ?>">
+                    <button type="submit" class="table-btn-action delete border-0 bg-transparent p-0" title="Hapus Data Alat (Super Admin)">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                  <?php else: ?>
+                  <span class="table-btn-action text-muted" title="Hanya Super Admin yang dapat menghapus alat" style="opacity: 0.4; cursor: not-allowed;">
                     <i class="bi bi-trash"></i>
-                  </a>
+                  </span>
+                  <?php endif; ?>
                 </div>
               </td>
             </tr>
@@ -248,11 +274,42 @@ include("header.php");
     </table>
   </div>
 
-  <!-- Footer Controls -->
+  <!-- Footer Controls & Pagination (Finding #12) -->
   <div class="table-footer-control d-flex flex-wrap justify-content-between align-items-center p-3 border-top gap-2">
     <span class="table-pagination-info text-muted small">
-      Menampilkan <strong><?= ($result) ? mysqli_num_rows($result) : 0 ?></strong> unit peralatan medis
+      Menampilkan <strong><?= ($result) ? mysqli_num_rows($result) : 0 ?></strong> dari <strong><?= $totalFiltered ?></strong> unit peralatan medis (Halaman <?= $page ?> dari <?= $totalPages ?>)
     </span>
+
+    <?php if ($totalPages > 1): ?>
+    <nav aria-label="Navigasi Halaman">
+      <ul class="pagination pagination-sm mb-0">
+        <?php
+        $queryParams = $_GET;
+        ?>
+        <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
+          <?php $queryParams['page'] = max(1, $page - 1); ?>
+          <a class="page-link" href="?<?= http_build_query($queryParams) ?>" aria-label="Sebelumnya">
+            &laquo; Prev
+          </a>
+        </li>
+
+        <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+          <?php $queryParams['page'] = $p; ?>
+          <li class="page-item <?= ($p == $page) ? 'active' : '' ?>">
+            <a class="page-link" href="?<?= http_build_query($queryParams) ?>"><?= $p ?></a>
+          </li>
+        <?php endfor; ?>
+
+        <li class="page-item <?= ($page >= $totalPages) ? 'disabled' : '' ?>">
+          <?php $queryParams['page'] = min($totalPages, $page + 1); ?>
+          <a class="page-link" href="?<?= http_build_query($queryParams) ?>" aria-label="Berikutnya">
+            Next &raquo;
+          </a>
+        </li>
+      </ul>
+    </nav>
+    <?php endif; ?>
+
     <span class="small text-muted">
       Database: <code class="text-dark">simrs</code> &bull; Tabel: <code class="text-dark">alat</code>
     </span>
@@ -271,11 +328,14 @@ include("header.php");
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <form action="add.php" method="post">
+        <!-- Token CSRF (Finding #5) -->
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+        
         <div class="modal-body p-4">
           <!-- Nama Alat -->
           <div class="mb-3">
             <label class="form-label-custom fw-semibold">Nama Alat Medis <span class="text-danger">*</span></label>
-            <input type="text" name="nama_alat" class="form-control-custom" placeholder="Contoh: Suction Pump Portable" required>
+            <input type="text" name="nama_alat" class="form-control-custom" placeholder="Contoh: Suction Pump Portable" required maxlength="100">
           </div>
 
           <div class="row g-2 mb-3">
@@ -285,13 +345,14 @@ include("header.php");
             </div>
             <div class="col-6">
               <label class="form-label-custom fw-semibold">Merek <span class="text-danger">*</span></label>
-              <input type="text" name="merek" class="form-control-custom" placeholder="Contoh: GEA Medical" required>
+              <input type="text" name="merek" class="form-control-custom" placeholder="Contoh: GEA Medical" required maxlength="50">
             </div>
           </div>
 
           <div class="mb-2">
             <label class="form-label-custom fw-semibold">Lokasi / Ruangan <span class="text-danger">*</span></label>
-            <input type="text" name="lokasi" list="modal-ruang-list" class="form-control-custom" placeholder="Contoh: OK, ICU, UGD" required maxlength="10">
+            <!-- Batas panjang 50 karakter & dukungan HEMODIALISA (Finding #10) -->
+            <input type="text" name="lokasi" list="modal-ruang-list" class="form-control-custom" placeholder="Contoh: OK, ICU, UGD, HEMODIALISA" required maxlength="50">
             <datalist id="modal-ruang-list">
               <option value="ICU">
               <option value="UGD">
@@ -300,8 +361,11 @@ include("header.php");
               <option value="LAB">
               <option value="RADIOLOGI">
               <option value="RAWAT INAP">
+              <option value="HEMODIALISA">
+              <option value="FARMASI">
+              <option value="CSSD">
             </datalist>
-            <small class="text-muted">Maksimal 10 karakter.</small>
+            <small class="text-muted">Maksimal 50 karakter.</small>
           </div>
         </div>
         <div class="modal-footer border-top p-3">
@@ -314,5 +378,13 @@ include("header.php");
     </div>
   </div>
 </div>
+
+<!-- JavaScript Konfirmasi Hapus Aman Bebas Stored XSS (Finding #3) -->
+<script>
+function confirmDelete(form) {
+  var name = (form && form.item_name) ? form.item_name.value : 'alat ini';
+  return confirm('Apakah Anda yakin ingin menghapus data alat: ' + name + '?');
+}
+</script>
 
 <?php include("footer.php"); ?>

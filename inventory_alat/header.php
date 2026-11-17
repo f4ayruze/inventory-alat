@@ -7,7 +7,8 @@ if (!isset($activeMenu)) $activeMenu = 'index';
 
 $current_nama = $_SESSION['nama_lengkap'] ?? 'Pengguna';
 $current_user = $_SESSION['username'] ?? 'user';
-$current_role = $_SESSION['role'] ?? 'Staf';
+$current_role = $_SESSION['role'] ?? 'Teknisi Elektromedik';
+$is_super_admin = ($current_role === 'Super Admin');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -15,12 +16,12 @@ $current_role = $_SESSION['role'] ?? 'Staf';
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= htmlspecialchars($pageTitle) ?></title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/images/favicon.ico">
 
-  <!-- Local Third-Party Libraries -->
+  <!-- Local Third-Party Libraries (100% Offline Compatible) -->
   <link rel="stylesheet" href="assets/libs/bootstrap/css/bootstrap.min.css">
   <link rel="stylesheet" href="assets/libs/bootstrap-icons/bootstrap-icons.css">
   <link rel="stylesheet" href="assets/libs/apexcharts/apexcharts.css">
@@ -38,11 +39,11 @@ $current_role = $_SESSION['role'] ?? 'Staf';
       background-color: #F0F4F9 !important;
     }
     .sidebar-wrapper {
-      background-color: #0C1B2A !important; /* Deep Sky Marine / Dark Slate */
+      background-color: #0C1B2A !important;
       border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
     .sidebar-brand i {
-      color: #38BDF8 !important; /* Biru langit cerah */
+      color: #38BDF8 !important;
     }
     .sidebar-menu-link:hover {
       background-color: rgba(56, 189, 248, 0.08) !important;
@@ -71,7 +72,7 @@ $current_role = $_SESSION['role'] ?? 'Staf';
       border-bottom: 2px solid #E2E8F0 !important;
     }
     .table-custom tbody tr:hover {
-      background-color: #F0F7FF !important; /* Sorot baris dengan biru langit sangat lembut */
+      background-color: #F0F7FF !important;
     }
 
     /* Banner Biru Langit */
@@ -180,36 +181,32 @@ $current_role = $_SESSION['role'] ?? 'Staf';
         <div class="sidebar-menu-title">Menu Utama</div>
         <ul class="sidebar-menu-list">
           <li class="sidebar-menu-item">
-            <a href="index.php" class="sidebar-menu-link <?= ($activeMenu == 'index') ? 'active' : '' ?>" title="Daftar Alat">
+            <a href="index.php" class="sidebar-menu-link <?= ($activeMenu === 'index') ? 'active' : '' ?>" title="Daftar Alat">
               <i class="bi bi-grid-fill"></i>
               <span>Daftar Alat</span>
             </a>
           </li>
           <li class="sidebar-menu-item">
-            <a href="add.php" class="sidebar-menu-link <?= ($activeMenu == 'add') ? 'active' : '' ?>" title="Tambah Alat">
+            <a href="add.php" class="sidebar-menu-link <?= ($activeMenu === 'add') ? 'active' : '' ?>" title="Tambah Alat">
               <i class="bi bi-plus-circle-fill"></i>
               <span>Tambah Alat</span>
             </a>
           </li>
+          <?php if ($is_super_admin): ?>
           <li class="sidebar-menu-item">
-            <a href="log_akses.php" class="sidebar-menu-link <?= ($activeMenu == 'log_akses') ? 'active' : '' ?>" title="Riwayat & Log Akses">
+            <a href="log_akses.php" class="sidebar-menu-link <?= ($activeMenu === 'log_akses') ? 'active' : '' ?>" title="Riwayat & Log Akses">
               <i class="bi bi-shield-check"></i>
-              <span>Log Akses User</span>
+              <span>Log Akses (Admin)</span>
             </a>
           </li>
+          <?php endif; ?>
         </ul>
       </div>
 
       <!-- Group: Database Shortcut -->
       <div class="sidebar-menu-section">
-        <div class="sidebar-menu-title">Database & Pengaturan</div>
+        <div class="sidebar-menu-title">Akun & Sistem</div>
         <ul class="sidebar-menu-list">
-          <li class="sidebar-menu-item">
-            <a href="http://localhost/phpmyadmin/index.php?route=/database/structure&db=simrs" target="_blank" class="sidebar-menu-link" title="Buka Database simrs di phpMyAdmin">
-              <i class="bi bi-database"></i>
-              <span>MySQL simrs</span>
-            </a>
-          </li>
           <li class="sidebar-menu-item">
             <a href="logout.php" class="sidebar-menu-link text-danger" title="Keluar dari Sistem" onclick="return confirm('Apakah Anda yakin ingin logout?');">
               <i class="bi bi-box-arrow-right"></i>
@@ -226,8 +223,8 @@ $current_role = $_SESSION['role'] ?? 'Staf';
         <?= strtoupper(substr($current_user, 0, 1)) ?>
       </div>
       <div class="sidebar-profile-info">
-        <div class="sidebar-profile-name"><?= htmlspecialchars($current_nama) ?></div>
-        <div class="sidebar-profile-email"><?= htmlspecialchars($current_role) ?></div>
+        <div class="sidebar-profile-name"><?= htmlspecialchars($current_nama, ENT_QUOTES, 'UTF-8') ?></div>
+        <div class="sidebar-profile-email"><span class="badge bg-light text-primary"><?= htmlspecialchars($current_role, ENT_QUOTES, 'UTF-8') ?></span></div>
       </div>
     </div>
   </div>
@@ -251,16 +248,18 @@ $current_role = $_SESSION['role'] ?? 'Staf';
           <i class="bi bi-plus-lg"></i>
           <span>Tambah Alat</span>
         </a>
+        <?php if ($is_super_admin): ?>
         <a href="log_akses.php" class="btn-custom btn-custom-sm btn-custom-secondary ms-2 d-none d-md-inline-flex">
           <i class="bi bi-clock-history"></i>
           <span>Log Akses</span>
         </a>
+        <?php endif; ?>
       </div>
 
       <!-- Mid navbar: search pill -->
       <form action="index.php" method="get" class="navbar-search-wrapper">
         <input type="text" name="search" class="navbar-search-input" placeholder="Cari nama alat, merek, atau lokasi..." 
-               value="<?= isset($_GET['search']) ? htmlspecialchars($_GET['search']) : '' ?>">
+               value="<?= isset($_GET['search']) ? htmlspecialchars($_GET['search'], ENT_QUOTES, 'UTF-8') : '' ?>">
         <button type="submit" class="navbar-search-btn" aria-label="Search">
           <i class="bi bi-search"></i>
         </button>
@@ -279,18 +278,20 @@ $current_role = $_SESSION['role'] ?? 'Staf';
             <div class="d-flex align-items-center justify-content-center rounded-circle me-1" style="width: 32px; height: 32px; background: #0284C7; color: #FFFFFF; font-weight: 700; font-size: 0.85rem;">
               <?= strtoupper(substr($current_user, 0, 1)) ?>
             </div>
-            <span class="navbar-profile-name d-none d-md-inline"><?= htmlspecialchars($current_nama) ?></span>
+            <span class="navbar-profile-name d-none d-md-inline"><?= htmlspecialchars($current_nama, ENT_QUOTES, 'UTF-8') ?></span>
             <i class="bi bi-chevron-down navbar-profile-caret"></i>
           </button>
           <ul class="dropdown-menu dropdown-menu-end dropdown-menu-profile" aria-labelledby="profile-dropdown">
             <li class="dropdown-header">
-              <strong><?= htmlspecialchars($current_nama) ?></strong><br>
-              <small class="text-muted">@<?= htmlspecialchars($current_user) ?> (<?= htmlspecialchars($current_role) ?>)</small>
+              <strong><?= htmlspecialchars($current_nama, ENT_QUOTES, 'UTF-8') ?></strong><br>
+              <small class="text-muted">@<?= htmlspecialchars($current_user, ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($current_role, ENT_QUOTES, 'UTF-8') ?>)</small>
             </li>
             <li><hr class="dropdown-divider"></li>
             <li><a class="dropdown-item" href="index.php"><i class="bi bi-grid me-2 text-primary"></i> Daftar Alat</a></li>
             <li><a class="dropdown-item" href="add.php"><i class="bi bi-plus-circle me-2 text-success"></i> Tambah Alat</a></li>
+            <?php if ($is_super_admin): ?>
             <li><a class="dropdown-item" href="log_akses.php"><i class="bi bi-clock-history me-2 text-info"></i> Log Akses Pengguna</a></li>
+            <?php endif; ?>
             <li><hr class="dropdown-divider"></li>
             <li><a class="dropdown-item text-danger" href="logout.php" onclick="return confirm('Apakah Anda yakin ingin logout?');"><i class="bi bi-box-arrow-right me-2"></i> Logout</a></li>
           </ul>
@@ -301,19 +302,34 @@ $current_role = $_SESSION['role'] ?? 'Staf';
 
     <div class="p-4">
       <?php if (isset($_GET['msg'])): ?>
-        <?php if ($_GET['msg'] == 'added'): ?>
+        <?php if ($_GET['msg'] === 'added'): ?>
           <div class="alert alert-success alert-dismissible fade show" role="alert">
             <i class="bi bi-check-circle-fill me-2"></i> <strong>Berhasil!</strong> Data alat medis baru berhasil disimpan ke database.
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
-        <?php elseif ($_GET['msg'] == 'updated'): ?>
+        <?php elseif ($_GET['msg'] === 'updated'): ?>
           <div class="alert alert-info alert-dismissible fade show" role="alert">
             <i class="bi bi-check-circle-fill me-2"></i> <strong>Berhasil!</strong> Perubahan data alat medis berhasil diperbarui.
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
-        <?php elseif ($_GET['msg'] == 'deleted'): ?>
+        <?php elseif ($_GET['msg'] === 'deleted'): ?>
           <div class="alert alert-warning alert-dismissible fade show" role="alert">
             <i class="bi bi-trash-fill me-2"></i> <strong>Berhasil!</strong> Data alat medis telah dihapus dari tabel database.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        <?php elseif ($_GET['msg'] === 'unauthorized'): ?>
+          <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-shield-x me-2"></i> <strong>Akses Ditolak!</strong> Anda tidak memiliki izin untuk melakukan tindakan ini (Hak akses khusus Super Admin).
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        <?php elseif ($_GET['msg'] === 'csrf_error'): ?>
+          <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> <strong>Sesi Kedaluwarsa!</strong> Token keamanan CSRF tidak valid. Silakan ulangi kembali.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        <?php elseif ($_GET['msg'] === 'error'): ?>
+          <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-x-circle-fill me-2"></i> <strong>Gagal!</strong> Terjadi kesalahan saat memproses permintaan Anda.
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
         <?php endif; ?>

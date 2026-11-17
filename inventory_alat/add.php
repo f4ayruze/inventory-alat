@@ -4,31 +4,50 @@ include_once("auth_check.php");
 
 $errors = [];
 
-if (isset($_POST['submit'])) {
-    $nama_alat = trim($_POST['nama_alat']);
-    $tahun     = intval($_POST['tahun']);
-    $merek     = trim($_POST['merek']);
-    $lokasi    = trim($_POST['lokasi']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
+    // Validasi Token CSRF
+    $token = $_POST['csrf_token'] ?? '';
+    if (!validate_csrf($token)) {
+        $errors[] = "Token keamanan CSRF tidak valid atau telah kedaluwarsa. Silakan refresh halaman.";
+    } else {
+        $nama_alat = trim($_POST['nama_alat'] ?? '');
+        $tahun     = intval($_POST['tahun'] ?? 0);
+        $merek     = trim($_POST['merek'] ?? '');
+        $lokasi    = trim($_POST['lokasi'] ?? '');
 
-    if (empty($nama_alat)) $errors[] = "Nama alat wajib diisi.";
-    if ($tahun < 1900 || $tahun > 2100) $errors[] = "Tahun tidak valid.";
-    if (empty($merek)) $errors[] = "Merek wajib diisi.";
-    if (empty($lokasi)) $errors[] = "Lokasi ruangan wajib diisi.";
+        if (empty($nama_alat)) $errors[] = "Nama alat medis wajib diisi.";
+        if ($tahun < 1900 || $tahun > 2100) $errors[] = "Tahun pengadaan tidak valid.";
+        if (empty($merek)) $errors[] = "Merek atau pabrikan wajib diisi.";
+        if (empty($lokasi)) $errors[] = "Lokasi ruangan wajib diisi.";
+        if (strlen($lokasi) > 50) $errors[] = "Nama ruangan maksimal 50 karakter.";
 
-    if (empty($errors)) {
-        $nama_alat_esc = mysqli_real_escape_string($mysqli, $nama_alat);
-        $merek_esc     = mysqli_real_escape_string($mysqli, $merek);
-        $lokasi_esc    = mysqli_real_escape_string($mysqli, $lokasi);
+        if (empty($errors)) {
+            // Pencegahan data duplikat (cek alat dengan nama dan lokasi yang sama)
+            $dupStmt = mysqli_prepare($mysqli, "SELECT id FROM alat WHERE LOWER(nama_alat) = LOWER(?) AND LOWER(lokasi) = LOWER(?) LIMIT 1");
+            mysqli_stmt_bind_param($dupStmt, "ss", $nama_alat, $lokasi);
+            mysqli_stmt_execute($dupStmt);
+            $dupRes = mysqli_stmt_get_result($dupStmt);
 
-        $query = "INSERT INTO alat (nama_alat, tahun, merek, lokasi) VALUES ('$nama_alat_esc', '$tahun', '$merek_esc', '$lokasi_esc')";
-        if (mysqli_query($mysqli, $query)) {
-            // Catat ke log aktivitas
-            catat_log($mysqli, "Menambah alat medis baru: $nama_alat ($merek, Lokasi: $lokasi)");
+            if ($dupRes && mysqli_num_rows($dupRes) > 0) {
+                $errors[] = "Alat medis dengan nama '" . htmlspecialchars($nama_alat, ENT_QUOTES, 'UTF-8') . "' sudah terdaftar di ruangan '" . htmlspecialchars($lokasi, ENT_QUOTES, 'UTF-8') . "'.";
+                mysqli_stmt_close($dupStmt);
+            } else {
+                mysqli_stmt_close($dupStmt);
 
-            header("Location: index.php?msg=added");
-            exit();
-        } else {
-            $errors[] = "Gagal menyimpan data: " . mysqli_error($mysqli);
+                // Insert dengan Prepared Statement (Anti SQL Injection)
+                $insertStmt = mysqli_prepare($mysqli, "INSERT INTO alat (nama_alat, tahun, merek, lokasi) VALUES (?, ?, ?, ?)");
+                mysqli_stmt_bind_param($insertStmt, "siss", $nama_alat, $tahun, $merek, $lokasi);
+
+                if (mysqli_stmt_execute($insertStmt)) {
+                    mysqli_stmt_close($insertStmt);
+                    catat_log($mysqli, "Menambah alat medis baru: $nama_alat ($merek, Lokasi: $lokasi)");
+                    header("Location: index.php?msg=added");
+                    exit();
+                } else {
+                    $errors[] = "Terjadi kesalahan saat menyimpan ke database.";
+                    mysqli_stmt_close($insertStmt);
+                }
+            }
         }
     }
 }
@@ -71,19 +90,21 @@ include("header.php");
         <div class="alert alert-danger" role="alert">
           <ul class="mb-0">
             <?php foreach ($errors as $err): ?>
-              <li><?= htmlspecialchars($err) ?></li>
+              <li><?= htmlspecialchars($err, ENT_QUOTES, 'UTF-8') ?></li>
             <?php endforeach; ?>
           </ul>
         </div>
       <?php endif; ?>
 
       <form action="add.php" method="post">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+
         <!-- Nama Alat -->
         <div class="mb-3">
           <label for="nama_alat" class="form-label-custom fw-semibold">Nama Alat Medis <span class="text-danger">*</span></label>
           <input type="text" class="form-control-custom" id="nama_alat" name="nama_alat" 
                  placeholder="Contoh: Suction Pump Portable, Defibrillator, ECG" 
-                 value="<?= isset($_POST['nama_alat']) ? htmlspecialchars($_POST['nama_alat']) : '' ?>" required>
+                 value="<?= isset($_POST['nama_alat']) ? htmlspecialchars($_POST['nama_alat'], ENT_QUOTES, 'UTF-8') : '' ?>" required>
           <small class="text-muted">Masukkan nama resmi peralatan elektromedis.</small>
         </div>
 
@@ -94,7 +115,7 @@ include("header.php");
             <input type="number" class="form-control-custom" id="tahun" name="tahun" 
                    min="1990" max="2099" 
                    placeholder="Contoh: <?= date('Y') ?>" 
-                   value="<?= isset($_POST['tahun']) ? htmlspecialchars($_POST['tahun']) : date('Y') ?>" required>
+                   value="<?= isset($_POST['tahun']) ? htmlspecialchars($_POST['tahun'], ENT_QUOTES, 'UTF-8') : date('Y') ?>" required>
             <small class="text-muted">Tahun pembuatan atau perolehan alat.</small>
           </div>
 
@@ -103,7 +124,7 @@ include("header.php");
             <label for="merek" class="form-label-custom fw-semibold">Merek / Pabrikan <span class="text-danger">*</span></label>
             <input type="text" class="form-control-custom" id="merek" name="merek" 
                    placeholder="Contoh: GEA Medical, Mindray, Terumo" 
-                   value="<?= isset($_POST['merek']) ? htmlspecialchars($_POST['merek']) : '' ?>" required>
+                   value="<?= isset($_POST['merek']) ? htmlspecialchars($_POST['merek'], ENT_QUOTES, 'UTF-8') : '' ?>" required>
             <small class="text-muted">Brand pembuat perangkat.</small>
           </div>
         </div>
@@ -112,8 +133,8 @@ include("header.php");
         <div class="mb-4">
           <label for="lokasi" class="form-label-custom fw-semibold">Lokasi / Ruangan <span class="text-danger">*</span></label>
           <input type="text" class="form-control-custom" id="lokasi" name="lokasi" list="ruang-list"
-                 placeholder="Contoh: OK, ICU, UGD, POLI, LAB" 
-                 value="<?= isset($_POST['lokasi']) ? htmlspecialchars($_POST['lokasi']) : '' ?>" required maxlength="10">
+                 placeholder="Contoh: OK, ICU, UGD, POLI, LAB, HEMODIALISA" 
+                 value="<?= isset($_POST['lokasi']) ? htmlspecialchars($_POST['lokasi'], ENT_QUOTES, 'UTF-8') : '' ?>" required maxlength="50">
           <datalist id="ruang-list">
             <option value="ICU">
             <option value="UGD">
@@ -124,8 +145,9 @@ include("header.php");
             <option value="RAWAT INAP">
             <option value="CSSD">
             <option value="HEMODIALISA">
+            <option value="NEONATOLOGI">
           </datalist>
-          <small class="text-muted">Maksimal 10 karakter (Contoh: ICU, OK, UGD, POLI).</small>
+          <small class="text-muted">Maksimal 50 karakter (Daftar rekomendasi: ICU, OK, UGD, HEMODIALISA, dll.).</small>
         </div>
 
         <!-- Tombol Aksi -->

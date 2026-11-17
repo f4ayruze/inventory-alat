@@ -11,44 +11,59 @@ if (!isset($_GET['id']) && !isset($_POST['id'])) {
 }
 
 $id = isset($_POST['id']) ? intval($_POST['id']) : intval($_GET['id']);
+if ($id <= 0) {
+    header("Location: index.php");
+    exit();
+}
 
 // Proses Update
-if (isset($_POST['update'])) {
-    $nama_alat = trim($_POST['nama_alat']);
-    $tahun     = intval($_POST['tahun']);
-    $merek     = trim($_POST['merek']);
-    $lokasi    = trim($_POST['lokasi']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!validate_csrf($token)) {
+        $errors[] = "Token keamanan CSRF tidak valid atau telah kedaluwarsa. Silakan refresh halaman.";
+    } else {
+        $nama_alat = trim($_POST['nama_alat'] ?? '');
+        $tahun     = intval($_POST['tahun'] ?? 0);
+        $merek     = trim($_POST['merek'] ?? '');
+        $lokasi    = trim($_POST['lokasi'] ?? '');
 
-    if (empty($nama_alat)) $errors[] = "Nama alat wajib diisi.";
-    if ($tahun < 1900 || $tahun > 2100) $errors[] = "Tahun tidak valid.";
-    if (empty($merek)) $errors[] = "Merek wajib diisi.";
-    if (empty($lokasi)) $errors[] = "Lokasi ruangan wajib diisi.";
+        if (empty($nama_alat)) $errors[] = "Nama alat wajib diisi.";
+        if ($tahun < 1900 || $tahun > 2100) $errors[] = "Tahun pengadaan tidak valid.";
+        if (empty($merek)) $errors[] = "Merek wajib diisi.";
+        if (empty($lokasi)) $errors[] = "Lokasi ruangan wajib diisi.";
+        if (strlen($lokasi) > 50) $errors[] = "Nama ruangan maksimal 50 karakter.";
 
-    if (empty($errors)) {
-        $nama_alat_esc = mysqli_real_escape_string($mysqli, $nama_alat);
-        $merek_esc     = mysqli_real_escape_string($mysqli, $merek);
-        $lokasi_esc    = mysqli_real_escape_string($mysqli, $lokasi);
+        if (empty($errors)) {
+            // Prepared Statement Update (Anti SQL Injection)
+            $upStmt = mysqli_prepare($mysqli, "UPDATE alat SET nama_alat = ?, tahun = ?, merek = ?, lokasi = ? WHERE id = ?");
+            mysqli_stmt_bind_param($upStmt, "sissi", $nama_alat, $tahun, $merek, $lokasi, $id);
 
-        $query = "UPDATE alat SET nama_alat = '$nama_alat_esc', tahun = '$tahun', merek = '$merek_esc', lokasi = '$lokasi_esc' WHERE id = $id";
-        if (mysqli_query($mysqli, $query)) {
-            // Catat log
-            catat_log($mysqli, "Mengubah data alat: $nama_alat (ID #$id, Merek: $merek, Lokasi: $lokasi)");
-
-            header("Location: index.php?msg=updated");
-            exit();
-        } else {
-            $errors[] = "Gagal memperbarui data: " . mysqli_error($mysqli);
+            if (mysqli_stmt_execute($upStmt)) {
+                mysqli_stmt_close($upStmt);
+                catat_log($mysqli, "Mengubah data alat: $nama_alat (ID #$id, Merek: $merek, Lokasi: $lokasi)");
+                header("Location: index.php?msg=updated");
+                exit();
+            } else {
+                $errors[] = "Gagal memperbarui data alat di database.";
+                mysqli_stmt_close($upStmt);
+            }
         }
     }
 }
 
-// Ambil Data Saat Ini
-$result = mysqli_query($mysqli, "SELECT * FROM alat WHERE id = $id");
-if (!$result || mysqli_num_rows($result) == 0) {
+// Ambil Data Saat Ini dengan Prepared Statement
+$getStmt = mysqli_prepare($mysqli, "SELECT * FROM alat WHERE id = ? LIMIT 1");
+mysqli_stmt_bind_param($getStmt, "i", $id);
+mysqli_stmt_execute($getStmt);
+$result = mysqli_stmt_get_result($getStmt);
+
+if (!$result || mysqli_num_rows($result) === 0) {
+    mysqli_stmt_close($getStmt);
     header("Location: index.php");
     exit();
 }
 $alat = mysqli_fetch_assoc($result);
+mysqli_stmt_close($getStmt);
 
 $pageTitle = "Edit Alat Medis #" . $id . " - SIMRS";
 $activeMenu = "index";
@@ -91,20 +106,21 @@ include("header.php");
         <div class="alert alert-danger" role="alert">
           <ul class="mb-0">
             <?php foreach ($errors as $err): ?>
-              <li><?= htmlspecialchars($err) ?></li>
+              <li><?= htmlspecialchars($err, ENT_QUOTES, 'UTF-8') ?></li>
             <?php endforeach; ?>
           </ul>
         </div>
       <?php endif; ?>
 
       <form action="edit.php" method="post">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
         <input type="hidden" name="id" value="<?= $id ?>">
 
         <!-- Nama Alat -->
         <div class="mb-3">
           <label for="nama_alat" class="form-label-custom fw-semibold">Nama Alat Medis <span class="text-danger">*</span></label>
           <input type="text" class="form-control-custom" id="nama_alat" name="nama_alat" 
-                 value="<?= htmlspecialchars($alat['nama_alat']) ?>" required>
+                 value="<?= htmlspecialchars($alat['nama_alat'], ENT_QUOTES, 'UTF-8') ?>" required>
           <small class="text-muted">Nama peralatan elektromedis.</small>
         </div>
 
@@ -114,7 +130,7 @@ include("header.php");
             <label for="tahun" class="form-label-custom fw-semibold">Tahun Pengadaan <span class="text-danger">*</span></label>
             <input type="number" class="form-control-custom" id="tahun" name="tahun" 
                    min="1990" max="2099" 
-                   value="<?= htmlspecialchars($alat['tahun']) ?>" required>
+                   value="<?= htmlspecialchars($alat['tahun'], ENT_QUOTES, 'UTF-8') ?>" required>
             <small class="text-muted">Tahun perolehan / pembuatan.</small>
           </div>
 
@@ -122,7 +138,7 @@ include("header.php");
           <div class="col-12 col-md-6 mb-3">
             <label for="merek" class="form-label-custom fw-semibold">Merek / Pabrikan <span class="text-danger">*</span></label>
             <input type="text" class="form-control-custom" id="merek" name="merek" 
-                   value="<?= htmlspecialchars($alat['merek']) ?>" required>
+                   value="<?= htmlspecialchars($alat['merek'], ENT_QUOTES, 'UTF-8') ?>" required>
             <small class="text-muted">Pabrikan / brand pembuat.</small>
           </div>
         </div>
@@ -131,7 +147,7 @@ include("header.php");
         <div class="mb-4">
           <label for="lokasi" class="form-label-custom fw-semibold">Lokasi / Ruangan <span class="text-danger">*</span></label>
           <input type="text" class="form-control-custom" id="lokasi" name="lokasi" list="ruang-list"
-                 value="<?= htmlspecialchars($alat['lokasi']) ?>" required maxlength="10">
+                 value="<?= htmlspecialchars($alat['lokasi'], ENT_QUOTES, 'UTF-8') ?>" required maxlength="50">
           <datalist id="ruang-list">
             <option value="ICU">
             <option value="UGD">
@@ -142,8 +158,9 @@ include("header.php");
             <option value="RAWAT INAP">
             <option value="CSSD">
             <option value="HEMODIALISA">
+            <option value="NEONATOLOGI">
           </datalist>
-          <small class="text-muted">Maksimal 10 karakter (Contoh: ICU, OK, UGD, POLI).</small>
+          <small class="text-muted">Maksimal 50 karakter (Contoh: ICU, OK, UGD, HEMODIALISA).</small>
         </div>
 
         <!-- Tombol Aksi -->

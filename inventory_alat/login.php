@@ -1,5 +1,11 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 7200,
+        'path'     => '/',
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
     session_start();
 }
 
@@ -11,69 +17,91 @@ if (isset($_SESSION['user_id'])) {
     exit();
 }
 
+// Inisialisasi token CSRF
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $error = '';
+$ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$ua = substr($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown', 0, 255);
+
+// Cek Pembatasan Percobaan Login (Rate Limiting: maks 5 kegagalan dalam 5 menit)
+$rateStmt = mysqli_prepare($mysqli, "SELECT COUNT(*) AS failed_count FROM log_akses WHERE ip_address = ? AND aktivitas LIKE 'Gagal Login%' AND waktu > (NOW() - INTERVAL 5 MINUTE)");
+mysqli_stmt_bind_param($rateStmt, "s", $ip);
+mysqli_stmt_execute($rateStmt);
+$rateRes = mysqli_stmt_get_result($rateStmt);
+$failedCount = ($rateRes && $row = mysqli_fetch_assoc($rateRes)) ? intval($row['failed_count']) : 0;
+mysqli_stmt_close($rateStmt);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
-
-    if (empty($username) || empty($password)) {
-        $error = "Silakan masukkan username dan password Anda!";
+    $postToken = $_POST['csrf_token'] ?? '';
+    
+    if (!hash_equals($_SESSION['csrf_token'] ?? '', $postToken)) {
+        $error = "Token keamanan tidak valid atau telah kedaluwarsa. Silakan refresh halaman.";
+    } elseif ($failedCount >= 5) {
+        $error = "Terlalu banyak percobaan login gagal dari IP Anda. Demi keamanan, silakan tunggu 5 menit sebelum mencoba kembali.";
     } else {
-        // Query menggunakan Prepared Statement untuk mencegah SQL Injection
-        $stmt = mysqli_prepare($mysqli, "SELECT id, username, password, nama_lengkap, email, role FROM users WHERE username = ? OR email = ? LIMIT 1");
-        mysqli_stmt_bind_param($stmt, "ss", $username, $username);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
+        $username = trim($_POST['username'] ?? '');
+        $password = $_POST['password'] ?? '';
 
-        if ($result && mysqli_num_rows($result) > 0) {
-            $user = mysqli_fetch_assoc($result);
-            mysqli_stmt_close($stmt);
+        if (empty($username) || empty($password)) {
+            $error = "Silakan masukkan username/email dan password Anda!";
+        } else {
+            // Query menggunakan Prepared Statement untuk mencegah SQL Injection
+            $stmt = mysqli_prepare($mysqli, "SELECT id, username, password, nama_lengkap, email, role FROM users WHERE username = ? OR email = ? LIMIT 1");
+            mysqli_stmt_bind_param($stmt, "ss", $username, $username);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
 
-            // Verifikasi Password (BCrypt standar industri atau MD5 fallback untuk akun lawas)
-            $password_valid = password_verify($password, $user['password']) || ($user['password'] === md5($password)) || ($user['password'] === $password);
+            $loginSuccess = false;
 
-            if ($password_valid) {
-                // Regenerasi session ID untuk mencegah serangan Session Fixation
-                session_regenerate_id(true);
+            if ($result && mysqli_num_rows($result) > 0) {
+                $user = mysqli_fetch_assoc($result);
+                mysqli_stmt_close($stmt);
 
-                $_SESSION['user_id']      = $user['id'];
-                $_SESSION['username']     = $user['username'];
-                $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
-                $_SESSION['email']        = $user['email'];
-                $_SESSION['role']         = $user['role'];
+                // STRICT: Hanya password_verify() resmi, TIDAK ada bypass plaintext atau hash comparison
+                if (password_verify($password, $user['password'])) {
+                    $loginSuccess = true;
 
-                // Update waktu login terakhir
-                $upStmt = mysqli_prepare($mysqli, "UPDATE users SET terakhir_login = NOW() WHERE id = ?");
-                mysqli_stmt_bind_param($upStmt, "i", $user['id']);
-                mysqli_stmt_execute($upStmt);
-                mysqli_stmt_close($upStmt);
+                    // Regenerasi session ID mencegah serangan Session Fixation
+                    session_regenerate_id(true);
 
-                // Catat ke log_akses
-                $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-                $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown', 0, 255);
-                $logStmt = mysqli_prepare($mysqli, "INSERT INTO log_akses (user_id, username, nama_lengkap, aktivitas, ip_address, user_agent, waktu) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                $act = "Login Berhasil ke Sistem";
-                mysqli_stmt_bind_param($logStmt, "isssss", $user['id'], $user['username'], $user['nama_lengkap'], $act, $ip, $ua);
-                mysqli_stmt_execute($logStmt);
-                mysqli_stmt_close($logStmt);
+                    $_SESSION['user_id']      = $user['id'];
+                    $_SESSION['username']     = $user['username'];
+                    $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
+                    $_SESSION['email']        = $user['email'];
+                    $_SESSION['role']         = $user['role'];
 
-                header("Location: index.php");
-                exit();
+                    // Update waktu login terakhir
+                    $upStmt = mysqli_prepare($mysqli, "UPDATE users SET terakhir_login = NOW() WHERE id = ?");
+                    mysqli_stmt_bind_param($upStmt, "i", $user['id']);
+                    mysqli_stmt_execute($upStmt);
+                    mysqli_stmt_close($upStmt);
+
+                    // Catat ke log_akses
+                    $logStmt = mysqli_prepare($mysqli, "INSERT INTO log_akses (user_id, username, nama_lengkap, aktivitas, ip_address, user_agent, waktu) VALUES (?, ?, ?, 'Login Berhasil ke Sistem', ?, ?, NOW())");
+                    mysqli_stmt_bind_param($logStmt, "issss", $user['id'], $user['username'], $user['nama_lengkap'], $ip, $ua);
+                    mysqli_stmt_execute($logStmt);
+                    mysqli_stmt_close($logStmt);
+
+                    header("Location: index.php");
+                    exit();
+                }
             } else {
+                if ($stmt) mysqli_stmt_close($stmt);
+            }
+
+            if (!$loginSuccess) {
                 // Catat kegagalan login untuk audit keamanan
-                $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-                $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown', 0, 255);
-                $failStmt = mysqli_prepare($mysqli, "INSERT INTO log_akses (user_id, username, nama_lengkap, aktivitas, ip_address, user_agent, waktu) VALUES (NULL, ?, 'Percobaan Gagal', 'Gagal Login: Password Salah', ?, ?, NOW())");
+                $failStmt = mysqli_prepare($mysqli, "INSERT INTO log_akses (user_id, username, nama_lengkap, aktivitas, ip_address, user_agent, waktu) VALUES (NULL, ?, 'Percobaan Gagal', 'Gagal Login: Kredensial Salah', ?, ?, NOW())");
                 mysqli_stmt_bind_param($failStmt, "sss", $username, $ip, $ua);
                 mysqli_stmt_execute($failStmt);
                 mysqli_stmt_close($failStmt);
 
-                $error = "Password yang Anda masukkan salah!";
+                // Pesan error generik mencegah enumerasi username
+                $error = "Username/Email atau password yang Anda masukkan salah!";
             }
-        } else {
-            if ($stmt) mysqli_stmt_close($stmt);
-            $error = "Akun tidak ditemukan! Pastikan username atau email sudah terdaftar.";
         }
     }
 }
@@ -170,8 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             width: 100%;
             display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
+            justify-content: space-between;
             text-decoration: none;
             transition: all 0.2s ease;
         }
@@ -190,12 +217,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i class="bi bi-hospital"></i>
                 <span>SIMRS Alat</span>
             </a>
-            <p class="login-subtitle">Masuk dengan Akun yang Telah Terdaftar</p>
+            <p class="login-subtitle">Masuk dengan Akun yang Terdaftar</p>
 
             <?php if (!empty($error)): ?>
                 <div class="alert alert-danger py-2 px-3 small d-flex align-items-center mb-3" role="alert">
                     <i class="bi bi-exclamation-triangle-fill me-2 fs-6"></i>
-                    <span><?= htmlspecialchars($error) ?></span>
+                    <span><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></span>
                 </div>
             <?php endif; ?>
 
@@ -213,12 +240,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php elseif ($_GET['msg'] === 'logged_out'): ?>
                     <div class="alert alert-info py-2 px-3 small d-flex align-items-center mb-3" role="alert">
                         <i class="bi bi-info-circle-fill me-2 fs-6"></i>
-                        <span>Anda telah berhasil logout dari sistem.</span>
+                        <span>Anda telah berhasil keluar (logout) dari sistem.</span>
                     </div>
                 <?php endif; ?>
             <?php endif; ?>
 
             <form action="login.php" method="POST">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+
                 <!-- Username / Email Input -->
                 <div class="mb-3">
                     <label for="username" class="form-label small fw-bold text-dark">Username atau Email</label>
@@ -226,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-person"></i></span>
                         <input type="text" name="username" id="username" class="form-control border-start-0 ps-0" 
                                placeholder="Masukkan username atau email" required autofocus
-                               value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user']) : (isset($_POST['username']) ? htmlspecialchars($_POST['username']) : '') ?>">
+                               value="<?= isset($_GET['user']) ? htmlspecialchars($_GET['user'], ENT_QUOTES, 'UTF-8') : (isset($_POST['username']) ? htmlspecialchars($_POST['username'], ENT_QUOTES, 'UTF-8') : '') ?>">
                     </div>
                 </div>
 
@@ -251,21 +280,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
 
             <!-- Bagian Pendaftaran Akun Baru (Sign Up) -->
-            <div class="mt-4 pt-3 border-top text-center">
-                <span class="text-muted small d-block mb-2">Belum memiliki akun terdaftar?</span>
+            <div class="mt-4 pt-3 border-top">
+                <span class="text-muted small d-block mb-2 text-center">Belum memiliki akun terdaftar?</span>
                 <a href="register.php" class="btn-signup-outline">
-                    <i class="bi bi-person-plus-fill"></i>
-                    <span>Daftar Akun Baru (Sign Up)</span>
+                    <span><i class="bi bi-person-plus-fill me-1"></i> Daftar Akun Baru (Sign Up)</span>
+                    <i class="bi bi-arrow-right"></i>
                 </a>
             </div>
 
             <div class="text-center mt-3 text-muted" style="font-size: 0.75rem;">
-                <i class="bi bi-shield-check text-success me-1"></i> Keamanan sesi aktif &bull; Login terverifikasi database
+                <i class="bi bi-shield-check text-success me-1"></i> Keamanan Sesi Aktif &bull; Terproteksi Enkripsi BCrypt
             </div>
         </div>
     </div>
 
-    <!-- Script toggle password visibility -->
     <script>
         const togglePassword = document.querySelector('#togglePassword');
         const passwordInput = document.querySelector('#password');

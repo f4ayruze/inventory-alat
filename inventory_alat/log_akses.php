@@ -2,6 +2,9 @@
 include_once("config.php");
 include_once("auth_check.php");
 
+// Keamanan RBAC: Hanya Super Admin yang berhak melihat audit log akses sistem (Finding #4)
+require_role('Super Admin');
+
 $pageTitle = "Riwayat & Log Akses Pengguna - SIMRS";
 $activeMenu = "log_akses";
 
@@ -13,7 +16,18 @@ if (!empty($search)) {
     $whereSql = "WHERE username LIKE '%$searchEsc%' OR nama_lengkap LIKE '%$searchEsc%' OR aktivitas LIKE '%$searchEsc%' OR ip_address LIKE '%$searchEsc%'";
 }
 
-$query = "SELECT * FROM log_akses $whereSql ORDER BY waktu DESC LIMIT 100";
+// Pagination Log Akses (Finding #12)
+$perPage = 20;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$totalCountRes = mysqli_query($mysqli, "SELECT COUNT(*) AS cnt FROM log_akses $whereSql");
+$totalCount = mysqli_fetch_assoc($totalCountRes)['cnt'];
+$totalPages = max(1, (int)ceil($totalCount / $perPage));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+$offset = ($page - 1) * $perPage;
+
+$query = "SELECT * FROM log_akses $whereSql ORDER BY waktu DESC LIMIT $perPage OFFSET $offset";
 $result = mysqli_query($mysqli, $query);
 
 // Hitung statistik log
@@ -90,7 +104,7 @@ include("header.php");
   <div class="table-header-control d-flex flex-wrap justify-content-between align-items-center gap-2">
     <form action="log_akses.php" method="get" class="table-search-box" style="min-width: 320px;">
       <i class="bi bi-search table-search-icon"></i>
-      <input type="text" name="search" class="table-search-input" placeholder="Cari nama, username, aktivitas, atau IP..." value="<?= htmlspecialchars($search) ?>">
+      <input type="text" name="search" class="table-search-input" placeholder="Cari nama, username, aktivitas, atau IP..." value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>">
     </form>
 
     <div class="d-flex align-items-center gap-2">
@@ -121,14 +135,14 @@ include("header.php");
       <tbody>
         <?php if ($result && mysqli_num_rows($result) > 0): ?>
           <?php 
-          $no = 1;
+          $no = $offset + 1;
           while ($row = mysqli_fetch_assoc($result)): 
             $badgeClass = 'bg-primary-subtle text-primary border border-primary-subtle';
-            if (stripos($row['aktivitas'], 'Gagal') !== false) {
+            if (stripos($row['aktivitas'], 'Gagal') !== false || stripos($row['aktivitas'], 'Ditolak') !== false) {
                 $badgeClass = 'bg-danger-subtle text-danger border border-danger-subtle';
             } elseif (stripos($row['aktivitas'], 'Logout') !== false) {
                 $badgeClass = 'bg-secondary-subtle text-secondary border border-secondary-subtle';
-            } elseif (stripos($row['aktivitas'], 'Login') !== false) {
+            } elseif (stripos($row['aktivitas'], 'Login') !== false || stripos($row['aktivitas'], 'Registrasi') !== false) {
                 $badgeClass = 'bg-success-subtle text-success border border-success-subtle';
             } elseif (stripos($row['aktivitas'], 'Hapus') !== false) {
                 $badgeClass = 'bg-warning-subtle text-warning-emphasis border border-warning-subtle';
@@ -139,25 +153,25 @@ include("header.php");
               <td>
                 <div class="d-flex align-items-center gap-2">
                   <div class="d-flex align-items-center justify-content-center rounded-circle" style="width: 34px; height: 34px; background: #E0F2FE; color: #0284C7; font-weight: 700;">
-                    <?= strtoupper(substr($row['username'], 0, 1)) ?>
+                    <?= strtoupper(substr($row['username'] ?? 'U', 0, 1)) ?>
                   </div>
                   <div>
-                    <div class="fw-bold text-dark"><?= htmlspecialchars($row['nama_lengkap']) ?></div>
-                    <small class="text-muted">@<?= htmlspecialchars($row['username']) ?></small>
+                    <div class="fw-bold text-dark"><?= htmlspecialchars($row['nama_lengkap'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                    <small class="text-muted">@<?= htmlspecialchars($row['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></small>
                   </div>
                 </div>
               </td>
               <td>
                 <span class="badge <?= $badgeClass ?> px-2 py-1" style="font-weight: 600; font-size: 0.78rem;">
-                  <?= htmlspecialchars($row['aktivitas']) ?>
+                  <?= htmlspecialchars($row['aktivitas'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
               </td>
               <td>
-                <code class="text-dark bg-light px-2 py-1 rounded" style="font-size: 0.8rem;"><?= htmlspecialchars($row['ip_address']) ?></code>
+                <code class="text-dark bg-light px-2 py-1 rounded" style="font-size: 0.8rem;"><?= htmlspecialchars($row['ip_address'], ENT_QUOTES, 'UTF-8') ?></code>
               </td>
               <td>
-                <small class="text-muted" title="<?= htmlspecialchars($row['user_agent']) ?>">
-                  <?= htmlspecialchars(substr($row['user_agent'], 0, 35)) ?><?= strlen($row['user_agent']) > 35 ? '...' : '' ?>
+                <small class="text-muted" title="<?= htmlspecialchars($row['user_agent'], ENT_QUOTES, 'UTF-8') ?>">
+                  <?= htmlspecialchars(substr($row['user_agent'], 0, 35), ENT_QUOTES, 'UTF-8') ?><?= strlen($row['user_agent']) > 35 ? '...' : '' ?>
                 </small>
               </td>
               <td>
@@ -182,10 +196,42 @@ include("header.php");
     </table>
   </div>
 
-  <div class="table-footer-control d-flex justify-content-between align-items-center p-3 border-top">
+  <!-- Footer Controls & Pagination (Finding #12) -->
+  <div class="table-footer-control d-flex flex-wrap justify-content-between align-items-center p-3 border-top gap-2">
     <span class="table-pagination-info text-muted small">
-      Menampilkan <strong><?= ($result) ? mysqli_num_rows($result) : 0 ?></strong> catatan akses terbaru
+      Menampilkan <strong><?= ($result) ? mysqli_num_rows($result) : 0 ?></strong> dari <strong><?= $totalCount ?></strong> log akses (Halaman <?= $page ?> dari <?= $totalPages ?>)
     </span>
+
+    <?php if ($totalPages > 1): ?>
+    <nav aria-label="Navigasi Halaman Log">
+      <ul class="pagination pagination-sm mb-0">
+        <?php
+        $queryParams = $_GET;
+        ?>
+        <li class="page-item <?= ($page <= 1) ? 'disabled' : '' ?>">
+          <?php $queryParams['page'] = max(1, $page - 1); ?>
+          <a class="page-link" href="?<?= http_build_query($queryParams) ?>" aria-label="Sebelumnya">
+            &laquo; Prev
+          </a>
+        </li>
+
+        <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+          <?php $queryParams['page'] = $p; ?>
+          <li class="page-item <?= ($p == $page) ? 'active' : '' ?>">
+            <a class="page-link" href="?<?= http_build_query($queryParams) ?>"><?= $p ?></a>
+          </li>
+        <?php endfor; ?>
+
+        <li class="page-item <?= ($page >= $totalPages) ? 'disabled' : '' ?>">
+          <?php $queryParams['page'] = min($totalPages, $page + 1); ?>
+          <a class="page-link" href="?<?= http_build_query($queryParams) ?>" aria-label="Berikutnya">
+            Next &raquo;
+          </a>
+        </li>
+      </ul>
+    </nav>
+    <?php endif; ?>
+
     <span class="small text-muted">
       Database: <code class="text-dark">simrs.log_akses</code>
     </span>

@@ -1,131 +1,70 @@
-# Sistem Inventory Alat Medis & Tugas CRUD SIMRS
+# Sistem Inventory Alat Medis – SIMRS
 
-Proyek Tugas Praktikum Pemrograman Web dan Sistem Informasi Manajemen Rumah Sakit (SIMRS) berbasis PHP dan database MySQL / MariaDB.
-
----
-
-## 👨‍🎓 Identitas Mahasiswa
-* **Nama**: Syuja Ridhwan Fairuz Zahran
-* **NIM**: 1202405030
-* **Program Studi**: Teknik Elektromedik
-* **Institusi**: Universitas Muhammadiyah PKU Surakarta
+**Mata Kuliah:** Pemrograman Web  
+**Institusi:** Universitas Muhammadiyah PKU Surakarta  
 
 ---
 
-## 📁 Struktur Repository
+## Fitur
 
-Repository ini mencakup dua versi pengerjaan tugas:
+| Modul | Deskripsi |
+|---|---|
+| **Sign Up** | Registrasi akun baru dengan validasi & hashing BCrypt |
+| **Sign In** | Login dengan rate-limit 5×/5 mnt, pesan error generik |
+| **Dashboard** | Statistik real-time, filter lokasi, pencarian, pagination |
+| **Tambah Alat** | Form lengkap + modal Tambah Cepat |
+| **Edit Alat** | Prepared statement, CSRF token |
+| **Hapus Alat** | POST-only + CSRF, hanya Super Admin |
+| **Log Akses** | Audit trail lengkap, hanya Super Admin |
+| **CRUD Dasar** | Versi sederhana PHP (tugas), wajib login |
 
-```text
-inventory-alat/
-├── index.php                 # Halaman portal utama tugas
-├── database_simrs.sql        # Export database MySQL siap import
-├── crud/                     # Versi 1: Tugas CRUD Dasar (PHP Native & MySQL)
-│   ├── config.php            # Koneksi database
-│   ├── index.php             # Menampilkan daftar alat (Read)
-│   ├── add.php               # Form tambah data alat (Create)
-│   ├── edit.php              # Form perbarui data alat (Update)
-│   └── delete.php            # Skrip hapus data alat (Delete)
-└── inventory_alat/           # Versi 2: Sistem Inventory Lengkap (Full UI & Security)
-    ├── config.php            # Koneksi database MySQL
-    ├── auth_check.php        # Middleware proteksi autentikasi & pencatat log
-    ├── login.php             # Halaman login modern (Sign In terproteksi)
-    ├── register.php          # Halaman pendaftaran akun baru (Sign Up dengan enkripsi BCrypt)
-    ├── logout.php            # Skrip logout & pembersih sesi
-    ├── log_akses.php         # Monitoring riwayat siapa saja yang mengakses sistem
-    ├── index.php             # Dashboard inventaris, filter lokasi, pencarian & tabel
-    ├── add.php               # Form input alat baru dengan validasi
-    ├── edit.php              # Form edit alat medis
-    ├── delete.php            # Hapus alat medis dengan konfirmasi
-    ├── header.php            # Komponen navbar & sidebar navigasi
-    ├── footer.php            # Komponen footer & library script
-    └── assets/               # File CSS (Tema Sky Blue), Bootstrap 5, Icons, JS
+---
+
+## Keamanan yang Diterapkan
+
+- **BCrypt** – semua password di-hash dengan `password_hash(..., PASSWORD_BCRYPT)`
+- **Prepared Statement** – semua query database menggunakan `mysqli_prepare()`
+- **CSRF Token** – setiap form POST dilindungi token acak 64-hex
+- **RBAC** – role *Super Admin* dan *Teknisi Elektromedik* dengan hak berbeda
+- **Rate Limiting** – max 5 percobaan login gagal per 5 menit per IP
+- **Session Security** – `session_regenerate_id()`, HttpOnly, SameSite=Lax, timeout 2 jam
+- **XSS Prevention** – seluruh output menggunakan `htmlspecialchars(ENT_QUOTES, 'UTF-8')`
+- **Audit Log** – setiap aktivitas (login, tambah, edit, hapus) dicatat ke `log_akses`
+
+---
+
+## Struktur Database (`simrs`)
+
+```sql
+alat        – id, nama_alat, tahun, merek, lokasi
+users       – id, nama_lengkap, username, email, password, role, created_at
+log_akses   – id, user_id, username, nama_lengkap, aktivitas, ip_address, user_agent, waktu
 ```
 
----
-
-## ⚙️ Fitur-Fitur Utama
-
-### 1. CRUD Master Data Alat Medis
-* **Create**: Menambahkan peralatan medis baru (Nama Alat, Tahun Pengadaan, Merek/Pabrikan, Lokasi/Ruang RS).
-* **Read**: Menampilkan seluruh data dengan kode unik otomatis (`#ALT-0001`), badge tahun, dan badge lokasi ruangan.
-* **Update**: Mengubah spesifikasi teknis dan perolehan alat.
-* **Delete**: Menghapus data alat dengan dialog konfirmasi keamanan browser.
-
-### 2. Autentikasi & Keamanan Sesi (Sign In & Sign Up)
-* **Pendaftaran Akun Baru (Sign Up)**: Pengguna baru mendaftar akun terlebih dahulu (`register.php`) sebelum mengakses data.
-* **Prepared Statements**: Seluruh query autentikasi dan pendaftaran menggunakan parameterized queries (`mysqli_prepare`) untuk mencegah serangan SQL Injection.
-* **Enkripsi Password**: Menggunakan `password_hash()` dengan algoritma BCrypt standar industri.
-* **Keamanan Sesi**: Proteksi Session Fixation dengan regenerasi ID sesi otomatis (`session_regenerate_id(true)`) saat login berhasil, serta proteksi CSRF token.
-* **Hanya Akun Terdaftar**: Menghapus kebocoran kredensial demo pada halaman login. Hanya akun yang valid di database yang dapat masuk.
-
-### 3. Monitoring & Audit Trail (`log_akses`)
-* Mencatat otomatis **siapa saja yang mengakses sistem**, meliputi:
-  * Waktu dan tanggal akses.
-  * Username dan Nama Lengkap pengguna.
-  * Aktivitas yang dilakukan (*Login, Logout, Tambah Data, Ubah Data, Hapus Data, atau Percobaan Login Gagal*).
-  * Alamat IP klien dan User-Agent perangkat / browser.
-
-### 4. Tampilan Antarmuka Modern
-* Skema warna **Biru Langit (Sky Blue)** dan **Putih Lembut (Soft Off-White)** yang nyaman di mata.
-* Desain responsif berbasis Bootstrap 5 dan Bootstrap Icons.
-* Fitur pencarian instan dan filter cepat per ruangan (ICU, UGD, OK, POLI, LAB, dll.).
+Import file: `database_simrs.sql` (UTF-8, tanpa BOM)
 
 ---
 
-## 🗄️ Struktur Database (`simrs`)
+## Role & Hak Akses
 
-File skema dan data awal tersedia di [`database_simrs.sql`](database_simrs.sql):
+| Role | Dashboard | Tambah | Edit | Hapus | Log Akses |
+|---|---|---|---|---|---|
+| Super Admin | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Teknisi Elektromedik | ✅ | ✅ | ✅ | ❌ | ❌ |
 
-1. **Tabel `alat`**:
-   * `id`: `INT(11) AUTO_INCREMENT PRIMARY KEY`
-   * `nama_alat`: `VARCHAR(100)`
-   * `tahun`: `YEAR(4)`
-   * `merek`: `VARCHAR(60)`
-   * `lokasi`: `VARCHAR(10)`
-
-2. **Tabel `users`**:
-   * `id`: `INT AUTO_INCREMENT PRIMARY KEY`
-   * `username`: `VARCHAR(50) UNIQUE`
-   * `password`: `VARCHAR(255)`
-   * `nama_lengkap`: `VARCHAR(100)`
-   * `role`: `VARCHAR(50)`
-   * `terakhir_login`: `DATETIME`
-
-3. **Tabel `log_akses`**:
-   * `id`: `INT AUTO_INCREMENT PRIMARY KEY`
-   * `user_id`: `INT`
-   * `username`: `VARCHAR(50)`
-   * `nama_lengkap`: `VARCHAR(100)`
-   * `aktivitas`: `VARCHAR(100)`
-   * `ip_address`: `VARCHAR(45)`
-   * `user_agent`: `TEXT`
-   * `waktu`: `DATETIME`
+> Daftar akun baru melalui halaman **Sign Up**. Semua akun baru mendapat role *Teknisi Elektromedik* secara default.
 
 ---
 
-## 🔑 Akun Demo Login
+## Cara Menjalankan (Lokal)
 
-| Username | Password | Nama Lengkap | Role |
-| :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | Administrator SIMRS | Super Admin |
-| `syuja` | `1202405030` | Syuja Ridhwan F. Z. | Teknisi Elektromedik |
-| `elektromedik` | `123456` | Staf Elektromedik RS | Teknisi Elektromedik |
+1. Pastikan XAMPP berjalan (Apache + MySQL)
+2. Import `database_simrs.sql` ke phpMyAdmin (database: `simrs`)
+3. Salin folder `inventory_alat/` dan `crud/` ke `C:/xampp/htdocs/`
+4. Akses via: `http://localhost/inventory-alat/`
 
 ---
 
-## 🚀 Panduan Menjalankan di Komputer Lokal
+## Repository
 
-1. Pastikan **XAMPP** sudah terinstal (Apache dan MySQL aktif).
-2. Clone repository ini ke dalam folder `htdocs`:
-   ```bash
-   cd C:\xampp\htdocs
-   git clone https://github.com/f4ayruze/inventory-alat.git
-   ```
-3. Buka browser dan akses phpMyAdmin: `http://localhost/phpmyadmin/`.
-4. Buat database baru bernama **`simrs`**.
-5. Import file `database_simrs.sql` ke dalam database `simrs`.
-6. Buka web di browser:
-   * **Portal Tugas**: `http://localhost/inventory-alat/`
-   * **Sistem Inventory Lengkap**: `http://localhost/inventory-alat/inventory_alat/login.php`
-   * **Versi CRUD Dasar**: `http://localhost/inventory-alat/crud/`
+GitHub: [f4ayruze/inventory-alat](https://github.com/f4ayruze/inventory-alat)
