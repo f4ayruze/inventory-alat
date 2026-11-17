@@ -118,18 +118,17 @@
         </div>
     </div>
 
-    <!-- Informasi Database & Akun Login -->
+    <!-- Informasi Keamanan & Registrasi Akun -->
     <div class="card border-0 bg-light p-3 rounded-4 mb-3">
-        <h6 class="fw-bold text-dark mb-2"><i class="bi bi-key-fill text-primary me-2"></i>Informasi Akun Login Demo:</h6>
-        <div class="row g-2 small text-muted">
-            <div class="col-12 col-md-4">
-                <strong>Super Admin:</strong> <code>admin</code> / <code>admin123</code>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h6 class="fw-bold text-dark mb-1"><i class="bi bi-shield-check text-success me-2"></i>Keamanan Akun & Autentikasi:</h6>
+                <small class="text-muted d-block">Sistem menggunakan enkripsi password BCrypt. Silakan buat akun melalui fitur <strong>Sign Up</strong> untuk mulai mengakses data inventaris.</small>
             </div>
-            <div class="col-12 col-md-4">
-                <strong>Teknisi:</strong> <code>syuja</code> / <code>1202405030</code>
-            </div>
-            <div class="col-12 col-md-4">
-                <strong>Staf:</strong> <code>elektromedik</code> / <code>123456</code>
+            <div>
+                <a href="inventory_alat/register.php" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-semibold">
+                    <i class="bi bi-person-plus-fill me-1"></i> Daftar Akun (Sign Up)
+                </a>
             </div>
         </div>
     </div>

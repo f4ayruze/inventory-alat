@@ -29,7 +29,8 @@ inventory-alat/
 └── inventory_alat/           # Versi 2: Sistem Inventory Lengkap (Full UI & Security)
     ├── config.php            # Koneksi database MySQL
     ├── auth_check.php        # Middleware proteksi autentikasi & pencatat log
-    ├── login.php             # Halaman login modern (Tema Biru Langit & Putih Lembut)
+    ├── login.php             # Halaman login modern (Sign In terproteksi)
+    ├── register.php          # Halaman pendaftaran akun baru (Sign Up dengan enkripsi BCrypt)
     ├── logout.php            # Skrip logout & pembersih sesi
     ├── log_akses.php         # Monitoring riwayat siapa saja yang mengakses sistem
     ├── index.php             # Dashboard inventaris, filter lokasi, pencarian & tabel
@@ -51,9 +52,12 @@ inventory-alat/
 * **Update**: Mengubah spesifikasi teknis dan perolehan alat.
 * **Delete**: Menghapus data alat dengan dialog konfirmasi keamanan browser.
 
-### 2. Autentikasi & Keamanan Sesi
-* Proteksi login berbasis session PHP.
-* Dukungan password hashing MD5 dan BCRYPT.
+### 2. Autentikasi & Keamanan Sesi (Sign In & Sign Up)
+* **Pendaftaran Akun Baru (Sign Up)**: Pengguna baru mendaftar akun terlebih dahulu (`register.php`) sebelum mengakses data.
+* **Prepared Statements**: Seluruh query autentikasi dan pendaftaran menggunakan parameterized queries (`mysqli_prepare`) untuk mencegah serangan SQL Injection.
+* **Enkripsi Password**: Menggunakan `password_hash()` dengan algoritma BCrypt standar industri.
+* **Keamanan Sesi**: Proteksi Session Fixation dengan regenerasi ID sesi otomatis (`session_regenerate_id(true)`) saat login berhasil, serta proteksi CSRF token.
+* **Hanya Akun Terdaftar**: Menghapus kebocoran kredensial demo pada halaman login. Hanya akun yang valid di database yang dapat masuk.
 
 ### 3. Monitoring & Audit Trail (`log_akses`)
 * Mencatat otomatis **siapa saja yang mengakses sistem**, meliputi:
